@@ -1,10 +1,10 @@
 'use server'
 
-import { execSync } from 'child_process';
+import ytdl from '@distube/ytdl-core';
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
-import Groq from 'groq-sdk'; // Используем родной SDK
+import Groq from 'groq-sdk';
 
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 
@@ -14,36 +14,51 @@ export async function processVideo(formData: FormData) {
   const audioPath = path.join(tempDir, `audio_${Date.now()}.mp3`);
 
   try {
-    // 1. Скачивание (обязательно в кавычках для Windows)
-    console.log('Скачивание видео...');
-    execSync(`yt-dlp -x --audio-format mp3 --audio-quality 5 --no-check-certificate -o "${audioPath}" "${url}"`);
+    console.log('Начинаю скачивание аудио через ytdl-core...');
+
+    // 1. Скачивание аудио потока вместо execSync
+    await new Promise((resolve:any, reject:any) => {
+      const stream = ytdl(url, { 
+        filter: 'audioonly', 
+        quality: 'highestaudio' 
+      });
+
+      const fileStream = fs.createWriteStream(audioPath);
+      stream.pipe(fileStream);
+
+      fileStream.on('finish', () => resolve());
+      fileStream.on('error', (err) => reject(err));
+      stream.on('error', (err) => reject(err));
+
+    });
 
     if (!fs.existsSync(audioPath)) {
-      throw new Error('Не удалось создать аудиофайл. Проверьте ссылку на видео.');
+      throw new Error('Файл не был создан.');
     }
 
-    // 2. Транскрибация через официальный SDK
+    console.log('Скачивание завершено. Отправка в Groq...');
+
+    // 2. Транскрибация через Groq
     const transcription = await groq.audio.transcriptions.create({
       file: fs.createReadStream(audioPath),
       model: "whisper-large-v3",
       response_format: "verbose_json",
     });
 
-    // 3. Удаление файла
-    fs.unlinkSync(audioPath);
+    // 3. Удаление временного файла
+    if (fs.existsSync(audioPath)) fs.unlinkSync(audioPath);
 
     return { text: transcription.text };
 
   } catch (error: any) {
-    console.error('--- ДЕТАЛИ ОШИБКИ ---');
-    // Выводим конкретную ошибку от Groq, если она есть
-    if (error.error?.message) {
-      console.error('Groq API Error:', error.error.message);
-    } else {
-      console.error(error.message);
-    }
-
+    console.error('Ошибка процесса:', error.message);
     if (fs.existsSync(audioPath)) fs.unlinkSync(audioPath);
+    
+    // Если Vercel прервет выполнение по тайм-ауту (10-15 сек)
+    if (error.message.includes('timeout')) {
+      return { error: "Видео слишком длинное для бесплатного тарифа Vercel" };
+    }
+    
     return { error: `Ошибка: ${error.message}` };
   }
 }
