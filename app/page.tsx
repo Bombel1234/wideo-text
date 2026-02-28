@@ -22,8 +22,9 @@ export default function Home() {
     setText(''); // Очищаем текст перед новым поиском
     try {
       const result = await processVideo(formData);
-      if (result.text) setText(result.text);
-      if (result.error) alert(result.error);
+      // if (result.text) setText(result.text);
+      // if (result.error) alert(result.error);
+      console.log(result.error)
     } catch (err) {
       alert("Ошибка сети.update.Sofiyka");
     } finally {
