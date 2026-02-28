@@ -25,7 +25,7 @@ export default function Home() {
       if (result.text) setText(result.text);
       if (result.error) alert(result.error);
     } catch (err) {
-      alert("Ошибка сети");
+      alert("Ошибка сети23");
     } finally {
       setLoading(false);
     }
